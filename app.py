@@ -1,55 +1,46 @@
 import streamlit as st
-import yt_dlp
-import os
-import tempfile
+import requests
 
-st.title("YouTube Downloader (High Compatibility)")
+st.set_page_config(page_title="YouTube to GitHub", page_icon="🚀")
+st.title("🚀 הורדה חזקה דרך GitHub Actions")
 
-YT_COOKIES = st.secrets.get("youtube_cookies")
+# שליפת נתונים מה-Secrets
+GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN")
+GITHUB_USER = st.secrets.get("GITHUB_USER")
+REPO_NAME = st.secrets.get("REPO_NAME")
 
-url = st.text_input("הכנס קישור:")
-format_choice = st.radio("בחר פורמט:", ("mp3", "mp4"))
+url = st.text_input("הדבק קישור מיוטיוב:")
+format_choice = st.selectbox("בחר פורמט:", ["mp3", "mp4"])
 
-if st.button("הפעל הורדה"):
-    if url and YT_COOKIES:
-        with st.spinner('מוריד...'):
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tfile:
-                    tfile.write(YT_COOKIES)
-                    cookie_path = tfile.name
-
-                # תרגום ההגדרות מה-YAML לקוד פייתון
-                ydl_opts = {
-                    'cookiefile': cookie_path,
-                    'outtmpl': '%(title)s.%(ext)s',
-                    'nocheckcertificate': True,
-                    'user_agent': 'Mozilla/5.0',
+if st.button("הפעל הורדה בשרת"):
+    if not url:
+        st.error("נא להזין קישור.")
+    elif not GITHUB_TOKEN:
+        st.error("ה-Token לא מוגדר ב-Secrets.")
+    else:
+        with st.spinner('שולח פקודה ל-GitHub...'):
+            # הכתובת להפעלת ה-YAML (download.yml)
+            api_url = f"https://api.github.com/repos/{GITHUB_USER}/{REPO_NAME}/actions/workflows/download.yml/dispatches"
+            
+            headers = {
+                "Authorization": f"token {GITHUB_TOKEN}",
+                "Accept": "application/vnd.github.v3+json"
+            }
+            
+            data = {
+                "ref": "main",
+                "inputs": {
+                    "yt_urls": url,
+                    "format": format_choice
                 }
-
-                if format_choice == "mp3":
-                    ydl_opts.update({
-                        'format': 'bestaudio/best',
-                        'postprocessors': [{
-                            'key': 'FFmpegExtractAudio',
-                            'preferredcodec': 'mp3',
-                            'preferredquality': '192',
-                        }],
-                    })
-                else:
-                    ydl_opts.update({
-                        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                        'merge_output_format': 'mp4',
-                    })
-
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    filename = ydl.prepare_filename(info)
-                    if format_choice == "mp3":
-                        filename = filename.rsplit('.', 1)[0] + '.mp3'
-
-                with open(filename, "rb") as f:
-                    st.download_button("לחץ להורדה", f, file_name=filename)
-                
-                os.unlink(cookie_path)
-            except Exception as e:
-                st.error(f"שגיאה: {e}")
+            }
+            
+            response = requests.post(api_url, headers=headers, json=data)
+            
+            if response.status_code == 204:
+                st.success("✅ הפקודה נשלחה! השרת של גיטהאב התחיל לעבוד.")
+                st.balloons()
+                st.info(f"תוכל לראות את ההתקדמות כאן: https://github.com/{GITHUB_USER}/{REPO_NAME}/actions")
+            else:
+                st.error(f"שגיאה: {response.status_code}")
+                st.write(response.text)
