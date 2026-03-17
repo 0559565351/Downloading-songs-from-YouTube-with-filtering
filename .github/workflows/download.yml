@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       yt_urls:
-        description: 'הדבק קישור אחד או כמה (מופרדים ברווח)'
+        description: 'הדבק קישור (למשל מיוטיוב)'
         required: true
       format:
         description: 'mp3 או mp4'
@@ -13,65 +13,52 @@ on:
 jobs:
   youtube_job:
     runs-on: ubuntu-latest
-    container:
-      image: jauderho/yt-dlp:latest
     permissions: write-all
     steps:
-      - name: 1. Download Multiple Videos
+      - name: 1. Checkout code
+        uses: actions/checkout@v4
+
+      - name: 2. Install yt-dlp and ffmpeg
+        run: |
+          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+          sudo chmod a+rx /usr/local/bin/yt-dlp
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: 3. Download Video
         run: |
           mkdir -p yt_output
           echo "${{ secrets.YT_COOKIES }}" > cookies.txt
           
-          for url in ${{ github.event.inputs.yt_urls }}; do
-            echo "מוריד: $url"
-            
-            # הוספת --no-playlist מבטיחה שגם אם הקישור הוא חלק מפלייליסט, ירד רק השיר הספציפי
-            if [ "${{ github.event.inputs.format }}" = "mp3" ]; then
-              yt-dlp --cookies cookies.txt \
-                --no-playlist \
-                -x --audio-format mp3 \
-                --embed-thumbnail \
-                --add-metadata \
-                -o "%(title)s.%(ext)s" \
-                --paths "yt_output" \
-                "$url"
-            else
-              yt-dlp --cookies cookies.txt \
-                --no-playlist \
-                -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
-                --merge-output-format mp4 \
-                --embed-thumbnail \
-                --add-metadata \
-                -o "%(title)s.%(ext)s" \
-                --paths "yt_output" \
-                "$url"
-            fi
-          done
+          FORMAT="${{ github.event.inputs.format }}"
+          URL="${{ github.event.inputs.yt_urls }}"
+          
+          if [ "$FORMAT" = "mp3" ]; then
+            echo "מתחיל הורדת MP3..."
+            yt-dlp --cookies cookies.txt \
+              --no-playlist \
+              -x --audio-format mp3 \
+              --embed-thumbnail --add-metadata \
+              -o "yt_output/%(title)s.%(ext)s" \
+              "$URL"
+          else
+            echo "מתחיל הורדת MP4..."
+            yt-dlp --cookies cookies.txt \
+              --no-playlist \
+              -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+              --merge-output-format mp4 \
+              --embed-thumbnail --add-metadata \
+              -o "yt_output/%(title)s.%(ext)s" \
+              "$URL"
+          fi
           
           rm cookies.txt
 
-      - name: 2. Prepare and Clean Artifacts
-        id: prepare
-        run: |
-          apk add zip
-          file_count=$(ls yt_output | wc -l)
-          
-          if [ "$file_count" -eq 1 ]; then
-            cd yt_output
-            original_file=$(ls *)
-            clean_name=$(echo "$original_file" | sed 's/ - \././g' | sed 's/-\././g')
-            mv "$original_file" "$clean_name"
-            cd ..
-            echo "file_path=yt_output/*" >> $GITHUB_OUTPUT
-          else
-            zip -j "downloads.zip" yt_output/*
-            echo "file_path=downloads.zip" >> $GITHUB_OUTPUT
-          fi
-
-      - name: 3. Create Release
+      - name: 4. Create Unique Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "${{ steps.prepare.outputs.file_path }}"
+          artifacts: "yt_output/*"
+          # יצירת תג ייחודי לפי מספר הריצה כדי שהסטרימליט יזהה בדיוק את השיר הנכון
           tag: "run-${{ github.run_number }}"
           name: "הורדה מספר ${{ github.run_number }}"
           token: ${{ secrets.GITHUB_TOKEN }}
+          makeLatest: true
