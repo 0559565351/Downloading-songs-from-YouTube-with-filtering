@@ -25,6 +25,7 @@ jobs:
           for url in ${{ github.event.inputs.yt_urls }}; do
             echo "מוריד: $url"
             
+            # שימוש בתבנית שם נקייה למניעת תווים מיותרים
             if [ "${{ github.event.inputs.format }}" = "mp3" ]; then
               yt-dlp --cookies cookies.txt \
                 -x --audio-format mp3 \
@@ -47,18 +48,24 @@ jobs:
           
           rm cookies.txt
 
-      - name: 2. Prepare Artifacts
+      - name: 2. Prepare and Clean Artifacts
         id: prepare
         run: |
           apk add zip
           file_count=$(ls yt_output | wc -l)
-          echo "מספר קבצים שהורדו: $file_count"
           
           if [ "$file_count" -eq 1 ]; then
-            # אם יש רק קובץ אחד, נשתמש בנתיב הישיר שלו
+            # טיפול בקובץ בודד: ניקוי שם הקובץ מרווחים כפולים או תווים בעייתיים
+            cd yt_output
+            original_file=$(ls *)
+            # יצירת שם נקי: לוקחים את שם הקובץ, מחליפים רצפי תווים מוזרים בנקודה אחת לפני הסיומת
+            clean_name=$(echo "$original_file" | sed 's/ - \././g' | sed 's/-\././g')
+            mv "$original_file" "$clean_name"
+            cd ..
+            
             echo "file_path=yt_output/*" >> $GITHUB_OUTPUT
           else
-            # אם יש כמה קבצים, נדחוס אותם לזיפ (ללא מבנה תיקיות פנימי)
+            # אם יש כמה קבצים, דחיסה לזיפ
             zip -j "downloads.zip" yt_output/*
             echo "file_path=downloads.zip" >> $GITHUB_OUTPUT
           fi
