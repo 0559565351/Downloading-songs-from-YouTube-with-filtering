@@ -3,61 +3,53 @@ import yt_dlp
 import os
 import tempfile
 
-# הגדרות עמוד
-st.set_page_config(page_title="YouTube Downloader", page_icon="🎵")
-st.title("🎵 מוריד שירים וסרטונים - גרסה יציבה")
+st.title("YouTube Downloader (High Compatibility)")
 
-# שליפת עוגיות מה-Secrets
 YT_COOKIES = st.secrets.get("youtube_cookies")
 
-url = st.text_input("הכנס קישור מיוטיוב:", placeholder="https://www.youtube.com/watch?v=...")
-format_choice = st.radio("בחר פורמט הורדה:", ("MP3 (שמע)", "MP4 (וידאו)"))
+url = st.text_input("הכנס קישור:")
+format_choice = st.radio("בחר פורמט:", ("mp3", "mp4"))
 
-if st.button("הכן קובץ להורדה"):
-    if not url:
-        st.error("נא להזין קישור.")
-    elif not YT_COOKIES:
-        st.error("שגיאה: לא נמצאו עוגיות ב-Secrets. יש לעדכן אותן כדי למנוע חסימה.")
-    else:
-        with st.spinner('מתחבר ליוטיוב ומכין את הקובץ...'):
+if st.button("הפעל הורדה"):
+    if url and YT_COOKIES:
+        with st.spinner('מוריד...'):
             try:
-                # יצירת קובץ עוגיות זמני
                 with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as tfile:
                     tfile.write(YT_COOKIES)
                     cookie_path = tfile.name
 
-                # הגדרות למניעת שגיאות Signature ו-403
+                # תרגום ההגדרות מה-YAML לקוד פייתון
                 ydl_opts = {
-                    # שימוש ב-best הוא הקריטי ביותר כשאין JS runtime בשרת
-                    'format': 'bestaudio/best' if "MP3" in format_choice else 'best',
                     'cookiefile': cookie_path,
-                    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                    'outtmpl': '%(title)s.%(ext)s',
                     'nocheckcertificate': True,
-                    'quiet': True,
-                    'outtmpl': 'downloaded_file.%(ext)s',
-                    # הגדרה לעקיפת מגבלות הנגן שמופיעות בלוגים
-                    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+                    'user_agent': 'Mozilla/5.0',
                 }
+
+                if format_choice == "mp3":
+                    ydl_opts.update({
+                        'format': 'bestaudio/best',
+                        'postprocessors': [{
+                            'key': 'FFmpegExtractAudio',
+                            'preferredcodec': 'mp3',
+                            'preferredquality': '192',
+                        }],
+                    })
+                else:
+                    ydl_opts.update({
+                        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                        'merge_output_format': 'mp4',
+                    })
 
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     filename = ydl.prepare_filename(info)
+                    if format_choice == "mp3":
+                        filename = filename.rsplit('.', 1)[0] + '.mp3'
+
+                with open(filename, "rb") as f:
+                    st.download_button("לחץ להורדה", f, file_name=filename)
                 
-                # כפתור הורדה למשתמש
-                with open(filename, "rb") as file:
-                    st.download_button(
-                        label="⬇️ לחץ כאן להורדת הקובץ",
-                        data=file,
-                        file_name=filename,
-                        mime="audio/mpeg" if "MP3" in format_choice else "video/mp4"
-                    )
-                
-                st.success("הקובץ מוכן!")
-                
-                # ניקוי קבצים זמניים
-                if os.path.exists(cookie_path):
-                    os.unlink(cookie_path)
-                
+                os.unlink(cookie_path)
             except Exception as e:
-                st.error(f"אירעה שגיאה: {e}")
-                st.info("טיפ: אם השגיאה נמשכת, וודא שהעוגיות ב-Secrets מעודכנות ושהן בפורמט Netscape.")
+                st.error(f"שגיאה: {e}")
