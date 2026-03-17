@@ -22,7 +22,6 @@ jobs:
           mkdir -p yt_output
           echo "${{ secrets.YT_COOKIES }}" > cookies.txt
           
-          # מעבר על כל הקישורים שהוכנסו
           for url in ${{ github.event.inputs.yt_urls }}; do
             echo "מוריד: $url"
             
@@ -48,15 +47,26 @@ jobs:
           
           rm cookies.txt
 
-      - name: 2. Zip and Upload
+      - name: 2. Prepare Artifacts
+        id: prepare
         run: |
           apk add zip
-          zip -r "downloads.zip" yt_output/
+          file_count=$(ls yt_output | wc -l)
+          echo "מספר קבצים שהורדו: $file_count"
+          
+          if [ "$file_count" -eq 1 ]; then
+            # אם יש רק קובץ אחד, נשתמש בנתיב הישיר שלו
+            echo "file_path=yt_output/*" >> $GITHUB_OUTPUT
+          else
+            # אם יש כמה קבצים, נדחוס אותם לזיפ (ללא מבנה תיקיות פנימי)
+            zip -j "downloads.zip" yt_output/*
+            echo "file_path=downloads.zip" >> $GITHUB_OUTPUT
+          fi
 
       - name: 3. Create Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "downloads.zip"
+          artifacts: "${{ steps.prepare.outputs.file_path }}"
           tag: "run-${{ github.run_number }}"
           name: "הורדה מספר ${{ github.run_number }}"
           body: |
