@@ -25,9 +25,10 @@ jobs:
           for url in ${{ github.event.inputs.yt_urls }}; do
             echo "מוריד: $url"
             
-            # שימוש בתבנית שם נקייה למניעת תווים מיותרים
+            # הוספת --no-playlist מבטיחה שגם אם הקישור הוא חלק מפלייליסט, ירד רק השיר הספציפי
             if [ "${{ github.event.inputs.format }}" = "mp3" ]; then
               yt-dlp --cookies cookies.txt \
+                --no-playlist \
                 -x --audio-format mp3 \
                 --embed-thumbnail \
                 --add-metadata \
@@ -36,6 +37,7 @@ jobs:
                 "$url"
             else
               yt-dlp --cookies cookies.txt \
+                --no-playlist \
                 -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
                 --merge-output-format mp4 \
                 --embed-thumbnail \
@@ -55,17 +57,13 @@ jobs:
           file_count=$(ls yt_output | wc -l)
           
           if [ "$file_count" -eq 1 ]; then
-            # טיפול בקובץ בודד: ניקוי שם הקובץ מרווחים כפולים או תווים בעייתיים
             cd yt_output
             original_file=$(ls *)
-            # יצירת שם נקי: לוקחים את שם הקובץ, מחליפים רצפי תווים מוזרים בנקודה אחת לפני הסיומת
             clean_name=$(echo "$original_file" | sed 's/ - \././g' | sed 's/-\././g')
             mv "$original_file" "$clean_name"
             cd ..
-            
             echo "file_path=yt_output/*" >> $GITHUB_OUTPUT
           else
-            # אם יש כמה קבצים, דחיסה לזיפ
             zip -j "downloads.zip" yt_output/*
             echo "file_path=downloads.zip" >> $GITHUB_OUTPUT
           fi
@@ -76,6 +74,4 @@ jobs:
           artifacts: "${{ steps.prepare.outputs.file_path }}"
           tag: "run-${{ github.run_number }}"
           name: "הורדה מספר ${{ github.run_number }}"
-          body: |
-            בוצע באמצעות: Downloading songs from YouTube with filtering
           token: ${{ secrets.GITHUB_TOKEN }}
