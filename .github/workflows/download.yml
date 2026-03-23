@@ -18,38 +18,49 @@ jobs:
       - name: 1. Checkout code
         uses: actions/checkout@v4
 
-      - name: 2. Install yt-dlp and ffmpeg
+      - name: 2. Install yt-dlp, ffmpeg and Node.js
         run: |
+          # התקנת Node.js הכרחית לפתרון ה-n challenge של יוטיוב
+          sudo apt-get update
+          sudo apt-get install -y nodejs ffmpeg
+          
+          # התקנת הגרסה האחרונה של yt-dlp
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
-          sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: 3. Download Video
+        env:
+          YT_URL: ${{ github.event.inputs.yt_urls }}
+          YT_FORMAT: ${{ github.event.inputs.format }}
         run: |
           mkdir -p yt_output
-          echo "${{ secrets.YT_COOKIES }}" > cookies.txt
           
-          FORMAT="${{ github.event.inputs.format }}"
-          URL="${{ github.event.inputs.yt_urls }}"
+          # יצירת קובץ עוגיות בצורה ששומרת על פורמט הטקסט
+          cat <<EOF > cookies.txt
+          ${{ secrets.YT_COOKIES }}
+          EOF
           
-          # הגדרות למניעת חסימות ופתרון בעיית Signature
-          ARGS="--cookies cookies.txt --no-playlist --extractor-args youtube:player_client=android,web"
-          
-          if [ "$FORMAT" = "mp3" ]; then
+          if [ ! -s cookies.txt ]; then
+            echo "Warning: cookies.txt is empty! Make sure YT_COOKIES secret is set."
+          fi
+
+          if [ "$YT_FORMAT" = "mp3" ]; then
             echo "מתחיל הורדת MP3..."
-            yt-dlp $ARGS \
+            yt-dlp -v --cookies cookies.txt \
+              --no-playlist \
               -x --audio-format mp3 \
               --embed-thumbnail --add-metadata \
               -o "yt_output/%(title)s.%(ext)s" \
-              "$URL"
+              "$YT_URL"
           else
             echo "מתחיל הורדת MP4..."
-            yt-dlp $ARGS \
+            yt-dlp -v --cookies cookies.txt \
+              --no-playlist \
               -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
               --merge-output-format mp4 \
               --embed-thumbnail --add-metadata \
               -o "yt_output/%(title)s.%(ext)s" \
-              "$URL"
+              "$YT_URL"
           fi
           
           rm cookies.txt
@@ -58,7 +69,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "yt_output/*"
-          tag: "download-${{ github.run_id }}-${{ github.run_attempt }}"
-          name: "הורדה מספר ${{ github.run_id }}"
-          body: "הקובץ מוכן להורדה."
+          tag: "download-${{ github.run_id }}-${{ github.run_number }}"
+          name: "YouTube Download ${{ github.run_id }}"
+          allowUpdates: true
           token: ${{ secrets.GITHUB_TOKEN }}
