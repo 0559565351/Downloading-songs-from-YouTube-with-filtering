@@ -14,6 +14,9 @@ jobs:
   youtube_job:
     runs-on: ubuntu-latest
     permissions: write-all
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    
     steps:
       - name: 1. Checkout code
         uses: actions/checkout@v4
@@ -35,26 +38,17 @@ jobs:
         run: |
           mkdir -p yt_output
           
-          # יצירת קובץ עוגיות בצורה ששומרת על פורמט הטקסט
-          cat <<EOF > cookies.txt
-          ${{ secrets.YT_COOKIES }}
-          EOF
-          
-          if [ ! -s cookies.txt ]; then
-            echo "Warning: cookies.txt is empty! Make sure YT_COOKIES secret is set."
-          fi
-
           if [ "$YT_FORMAT" = "mp3" ]; then
-            echo "מתחיל הורדת MP3..."
-            yt-dlp -v --cookies cookies.txt \
+            echo "מתחיל הורדת MP3 ללא עוגיות..."
+            yt-dlp -v \
               --no-playlist \
               -x --audio-format mp3 \
               --embed-thumbnail --add-metadata \
               -o "yt_output/%(title)s.%(ext)s" \
               "$YT_URL"
           else
-            echo "מתחיל הורדת MP4..."
-            yt-dlp -v --cookies cookies.txt \
+            echo "מתחיל הורדת MP4 ללא עוגיות..."
+            yt-dlp -v \
               --no-playlist \
               -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
               --merge-output-format mp4 \
@@ -62,8 +56,6 @@ jobs:
               -o "yt_output/%(title)s.%(ext)s" \
               "$YT_URL"
           fi
-          
-          rm cookies.txt
 
       - name: 4. Create Unique Release
         uses: ncipollo/release-action@v1
