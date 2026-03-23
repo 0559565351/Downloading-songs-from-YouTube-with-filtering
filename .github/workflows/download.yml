@@ -14,56 +14,51 @@ jobs:
   youtube_job:
     runs-on: ubuntu-latest
     permissions: write-all
-    
     steps:
       - name: 1. Checkout code
         uses: actions/checkout@v4
 
-      - name: 2. Install Dependencies (Node.js, yt-dlp, ffmpeg, get-pot)
+      - name: 2. Install yt-dlp and ffmpeg
         run: |
-          # התקנת Node.js ו-npm חיוניים להפעלת התוסף get-pot
-          sudo apt-get update
-          sudo apt-get install -y nodejs npm ffmpeg
-          
-          # התקנת yt-dlp העדכני ביותר
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
-          
-          # התקנת התוסף שהעלית
-          pip install yt_dlp_get_pot-0.3.0-py3-none-any.whl
+          sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: 3. Download Video
-        env:
-          YT_URL: ${{ github.event.inputs.yt_urls }}
-          YT_FORMAT: ${{ github.event.inputs.format }}
         run: |
           mkdir -p yt_output
+          echo "${{ secrets.YT_COOKIES }}" > cookies.txt
           
-          # פקודת ההורדה עם תיקון מירכאות ישיר למניעת שגיאות formatting
-          if [ "$YT_FORMAT" = "mp3" ]; then
-            echo "מתחיל הורדת MP3 עם מעקף Token..."
-            yt-dlp --no-playlist \
-              --extractor-args "youtube:getpot;player_client=ios" \
+          FORMAT="${{ github.event.inputs.format }}"
+          URL="${{ github.event.inputs.yt_urls }}"
+          
+          if [ "$FORMAT" = "mp3" ]; then
+            echo "מתחיל הורדת MP3..."
+            yt-dlp --cookies cookies.txt \
+              --no-playlist \
               -x --audio-format mp3 \
               --embed-thumbnail --add-metadata \
               -o "yt_output/%(title)s.%(ext)s" \
-              "$YT_URL"
+              "$URL"
           else
-            echo "מתחיל הורדת MP4 עם מעקף Token..."
-            yt-dlp --no-playlist \
-              --extractor-args "youtube:getpot;player_client=ios" \
+            echo "מתחיל הורדת MP4..."
+            yt-dlp --cookies cookies.txt \
+              --no-playlist \
               -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
               --merge-output-format mp4 \
               --embed-thumbnail --add-metadata \
               -o "yt_output/%(title)s.%(ext)s" \
-              "$YT_URL"
+              "$URL"
           fi
+          
+          rm cookies.txt
 
       - name: 4. Create Unique Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: "yt_output/*"
-          tag: "download-${{ github.run_id }}-${{ github.run_number }}"
-          name: "YouTube Download - ${{ github.run_id }}"
-          allowUpdates: true
+          # יצירת תג ייחודי לפי מספר הריצה כדי שהסטרימליט יזהה בדיוק את השיר הנכון
+          tag: "run-${{ github.run_number }}"
+          name: "הורדה מספר ${{ github.run_number }}"
           token: ${{ secrets.GITHUB_TOKEN }}
+          makeLatest: true
