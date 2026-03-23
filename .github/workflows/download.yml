@@ -14,8 +14,6 @@ jobs:
   youtube_job:
     runs-on: ubuntu-latest
     permissions: write-all
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     
     steps:
       - name: 1. Checkout code
@@ -23,7 +21,7 @@ jobs:
 
       - name: 2. Install Dependencies (Node.js, yt-dlp, ffmpeg, get-pot)
         run: |
-          # התקנת Node.js ו-npm ישירות מהמאגרים של אובונטו
+          # התקנת Node.js ו-npm חיוניים להפעלת התוסף get-pot
           sudo apt-get update
           sudo apt-get install -y nodejs npm ffmpeg
           
@@ -31,7 +29,7 @@ jobs:
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
           
-          # התקנת התוסף שהעלית (קובץ ה-whl חייב להיות בתיקייה הראשית)
+          # התקנת התוסף שהעלית
           pip install yt_dlp_get_pot-0.3.0-py3-none-any.whl
 
       - name: 3. Download Video
@@ -41,19 +39,19 @@ jobs:
         run: |
           mkdir -p yt_output
           
-          # הגדרות מעקף הכוללות את התוסף getpot ודימוי לקוח ios ליציבות מקסימלית
-          COMMON_ARGS="--no-playlist --extractor-args \"youtube:getpot;player_client=ios\""
-          
+          # פקודת ההורדה עם תיקון מירכאות ישיר למניעת שגיאות formatting
           if [ "$YT_FORMAT" = "mp3" ]; then
             echo "מתחיל הורדת MP3 עם מעקף Token..."
-            yt-dlp $COMMON_ARGS \
+            yt-dlp --no-playlist \
+              --extractor-args "youtube:getpot;player_client=ios" \
               -x --audio-format mp3 \
               --embed-thumbnail --add-metadata \
               -o "yt_output/%(title)s.%(ext)s" \
               "$YT_URL"
           else
             echo "מתחיל הורדת MP4 עם מעקף Token..."
-            yt-dlp $COMMON_ARGS \
+            yt-dlp --no-playlist \
+              --extractor-args "youtube:getpot;player_client=ios" \
               -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
               --merge-output-format mp4 \
               --embed-thumbnail --add-metadata \
