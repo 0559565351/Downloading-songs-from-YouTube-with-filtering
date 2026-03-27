@@ -57,7 +57,9 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "yt_output/*"
-          tag: "download-${{ github.run_id }}-${{ github.run_attempt }}"
-          name: "הורדה מספר ${{ github.run_id }}"
+          # שינוי ה-Tag למספר הריצה הסידורי
+          tag: "v${{ github.run_number }}" 
+          # שינוי הכותרת שמופיעה בתמונה למספר הריצה
+          name: "הורדה מספר ${{ github.run_number }}"
           body: "הקובץ מוכן להורדה."
           token: ${{ secrets.GITHUB_TOKEN }}
