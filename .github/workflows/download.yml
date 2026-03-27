@@ -26,40 +26,41 @@ jobs:
           # התקנת ffmpeg
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: 3. Download Video
+      - name: 3. Download Video and Get Title
+        id: download_step
         run: |
           mkdir -p yt_output
           
-          # יצירת קובץ עוגיות בצורה נקייה (מניעת שגיאות length 1)
           cat <<EOF > cookies.txt
           ${{ secrets.YT_COOKIES }}
           EOF
-          
-          # ניקוי שורות ריקות פוטנציאליות שגורמות לשגיאה בלוג
           sed -i '/^$/d' cookies.txt
 
           FORMAT="${{ github.event.inputs.format }}"
           URL="${{ github.event.inputs.yt_urls }}"
-          
-          # הגדרות הכוללות שימוש ב-Node.js כ-JS Runtime
-          # ושימוש ב-Android Client למניעת שגיאות Signature
+          # []הגדרות לשליפת השם ומניעת שגיאות [: 5]
           ARGS="--cookies cookies.txt --no-playlist --extractor-args youtube:player_client=android,web --js-runtimes node"
           
+          # []שליפת שם הסרטון מיוטיוב [: 3]
+          VIDEO_TITLE=$(yt-dlp $ARGS --get-title "$URL")
+          echo "video_title=$VIDEO_TITLE" >> $GITHUB_OUTPUT
+
           if [ "$FORMAT" = "mp3" ]; then
-            yt-dlp $ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "yt_output/%(title)s.%(ext)s" "$URL"
+            # []הורדה כ-MP3 תוך שמירה על כותרת הסרטון כשם הקובץ [: 6, 7]
+            yt-dlp $ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata --parse-metadata "title:%(title)s" -o "yt_output/%(title)s.%(ext)s" "$URL"
           else
-            yt-dlp $ARGS -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "yt_output/%(title)s.%(ext)s" "$URL"
+            # []הורדה כ-MP4 באיכות מיטבית [: 7]
+            yt-dlp $ARGS -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata --parse-metadata "title:%(title)s" -o "yt_output/%(title)s.%(ext)s" "$URL"
           fi
           
           rm cookies.txt
 
       - name: 4. Create Unique Release
-        uses: ncipollo/release-action@v1
+        [cite_start]uses: ncipollo/release-action@v1 [cite: 8]
         with:
           artifacts: "yt_output/*"
-          # שינוי ה-Tag למספר הריצה הסידורי
-          tag: "v${{ github.run_number }}" 
-          # שינוי הכותרת שמופיעה בתמונה למספר הריצה
-          name: "הורדה מספר ${{ github.run_number }}"
+          tag: "run-${{ github.run_number }}"
+          # הכותרת תהיה שם השיר + מספר הריצה
+          name: "${{ steps.download_step.outputs.video_title }} (#${{ github.run_number }})"
           body: "הקובץ מוכן להורדה."
-          token: ${{ secrets.GITHUB_TOKEN }}
+          [cite_start]token: ${{ secrets.GITHUB_TOKEN }} [cite: 9]
