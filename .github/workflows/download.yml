@@ -20,54 +20,46 @@ jobs:
 
       - name: 2. Install Dependencies
         run: |
+          # התקנת yt-dlp העדכני ביותר
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
+          # התקנת ffmpeg
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
-      - name: 3. Download Video and Extract Title
-        id: download_step
+      - name: 3. Download Video
         run: |
           mkdir -p yt_output
           
+          # יצירת קובץ עוגיות
           cat <<EOF > cookies.txt
           ${{ secrets.YT_COOKIES }}
           EOF
+          
           sed -i '/^$/d' cookies.txt
 
           FORMAT="${{ github.event.inputs.format }}"
           URL="${{ github.event.inputs.yt_urls }}"
-          ARGS="--cookies cookies.txt --no-playlist --extractor-args youtube:player_client=android,web --js-runtimes node"
           
-          # רשימת סינון (מילים אסורות)
-          BAD_WORDS="פורנו|סקסיה|שירת נשים|זמרת|ווקאלי נשים|sexy|porn|אודיה|נועה קירל|עדן בן זקן|אנה זק|יסמין מועלם|נס ויצי|שרית חדד"
-          FILTER="--match-filter \"title !~* '$BAD_WORDS' & description !~* '$BAD_WORDS'\""
-
-          # שליפת שם השיר מיוטיוב לצורך הכותרת
-          VIDEO_TITLE=$(yt-dlp $ARGS --get-title "$URL" || echo "שגיאה בשליפת השם")
-          echo "video_title=$VIDEO_TITLE" >> $GITHUB_OUTPUT
-
-          # ניסיון הורדה - שמירת הלוג לקובץ כדי לבדוק אם נחסם בגלל סינון
+          # הערה: הסרתי את --restrict-filenames כדי לאפשר שמות בעברית עם רווחים כפי שהם במקור
+          ARGS="--cookies cookies.txt --no-playlist --extractor-args youtube:player_client=android,web --js-runtimes node --match-filter \"!categories ~= '(?i)Porn|XXX|Hardcore|Sex|Blowjob|Anal|Hentai|NSFW|Fetish|Pornstar|Erotica|פורנו|סקס|זיון|מציצה|בוטה' & !description ~= '(?i)Porn|XXX|Hardcore|Sex|Blowjob|Anal|Hentai|NSFW|Fetish|Pornstar|Erotica|פורנו|סקס|זיון|מציצה|בוטה|אודיה|נועה קירל|נעה קירל|אנה זק|עדן בן זקן|שרית חדד|שירי מימון|מארינה מקסימיליאן|קרן פלס|מירי מסיקה|נסרין קדרי|נינט טייב|אגם בוחבוט|רוני דואני|דנה אינטרנשיונל|יובל דיין|שי המבר|נטע ברזילי|ואלרי חמאתי|יסמין מועלם|נונו|אלה לי|גלי עטרי|ריטה|עפרה חזה|חוה אלברשטיין|נרקיס|אילנית|ירדנה ארזי|מור שטייגל|ענבל ביבי|רוני דלומי|מאיה בוסקילה|נורית גלרון|קורין אלאל|יהודית רביץ|אתי אנקרי|זהבה בן|מרגלית צנעני|אביבה אבידן|לינט|עדן גולן|טלי קופר|עדי ביטי|שפיטה|סי היימן|מיקה קרני|דנה ברגר|איגי וקסמן|רונה קינן|מיקה משה|אלין גולן|ליהי טולדנו|גל דה פז|שושנה דמארי|יפה ירקוני|שרון חזיז|לאה שבת|שלווה ברטי|דפנה ארמוני|שרון רוטר|ג'וזי כץ|דורית ראובני' & !title ~= '(?i)Porn|XXX|Hardcore|Sex|Blowjob|Anal|Hentai|NSFW|Fetish|Pornstar|Erotica|פורנו|סקס|זיון|מציצה|בוטה|אודיה|נועה קירל|נעה קירל|אנה זק|עדן בן זקן|שרית חדד|שירי מימון|מארינה מקסימיליאן|קרן פלס|מירי מסיקה|נסרין קדרי|נינט טייב|אגם בוחבוט|רוני דואני|דנה אינטרנשיונל|יובל דיין|שי המבר|נטע ברזילי|ואלרי חמאתי|יסמין מועלם|נונו|אלה לי|גלי עטרי|ריטה|עפרה חזה|חוה אלברשטיין|נרקיס|אילנית|ירדנה ארזי|מור שטייגל|ענבל ביבי|רוני דלומי|מאיה בוסקילה|נורית גלרון|קורין אלאל|יהודית רביץ|אתי אנקרי|זהבה בן|מרגלית צנעני|אביבה אבידן|לינט|עדן גולן|טלי קופר|עדי ביטי|שפיטה|סי היימן|מיקה קרני|דנה ברגר|איגי וקסמן|רונה קינן|מיקה משה|אלין גולן|ליהי טולדנו|גל דה פז|שושנה דמארי|יפה ירקוני|שרון חזיז|לאה שבת|שלווה ברטי|דפנה ארמוני|שרון רוטר|ג'וזי כץ|דורית ראובני'\""
+          
           if [ "$FORMAT" = "mp3" ]; then
-            yt-dlp $ARGS $FILTER -x --audio-format mp3 --embed-thumbnail --add-metadata --parse-metadata "title:%(title)s" -o "yt_output/%(title)s.%(ext)s" "$URL" > download_log.txt 2>&1 || true
+            # שימוש ב-Template ששואב את ה-Title ושם אותו בתוך גרשיים
+            yt-dlp $ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "yt_output/\"%(title)s\".%(ext)s" "$URL"
           else
-            yt-dlp $ARGS $FILTER -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata --parse-metadata "title:%(title)s" -o "yt_output/%(title)s.%(ext)s" "$URL" > download_log.txt 2>&1 || true
-          fi
-
-          # בדיקה אם ההורדה נכשלה ספציפית בגלל ה-filter
-          if grep -q "does not pass filter" download_log.txt; then
-            echo "שיר זה נחסם" > "yt_output/הורדה נכשלה - שיר נחסם.txt"
-          elif [ -z "$(ls -A yt_output)" ]; then
-            echo "התרחשה שגיאה טכנית בהורדה (לא קשור לסינון)."
-            exit 1
+            # אותו דבר עבור פורמט MP4
+            yt-dlp $ARGS -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "yt_output/\"%(title)s\".%(ext)s" "$URL"
           fi
           
-          rm cookies.txt download_log.txt
+          rm cookies.txt
 
       - name: 4. Create Unique Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: "yt_output/*"
-          tag: "run-${{ github.run_number }}"
-          name: "${{ steps.download_step.outputs.video_title }} (#${{ github.run_number }})"
+          # שינוי ה-Tag למספר הריצה הסידורי
+          tag: "v${{ github.run_number }}" 
+          # שינוי הכותרת שמופיעה בתמונה למספר הריצה
+          name: "הורדה מספר ${{ github.run_number }}"
           body: "הקובץ מוכן להורדה."
           token: ${{ secrets.GITHUB_TOKEN }}
