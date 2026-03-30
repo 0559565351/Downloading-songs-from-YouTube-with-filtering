@@ -20,8 +20,10 @@ jobs:
 
       - name: 2. Install Dependencies
         run: |
+          # התקנת yt-dlp העדכני ביותר
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
+          # התקנת ffmpeg
           sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: 3. Download Video
@@ -32,27 +34,21 @@ jobs:
           cat <<EOF > cookies.txt
           ${{ secrets.YT_COOKIES }}
           EOF
+          
           sed -i '/^$/d' cookies.txt
 
-          URL="${{ github.event.inputs.yt_urls }}"
           FORMAT="${{ github.event.inputs.format }}"
+          URL="${{ github.event.inputs.yt_urls }}"
           
-          # --- רשימת מילים לחסימה ב-Metadata ---
-          BLOCK_LIST="יהודה|סקס|פורנו|sex|porn"
-          # ---------------------------------------
-
-          # הגדרות כלליות
-          # הוספתי --ignore-errors כדי שאם סרטון אחד נחסם בפלייליסט, הוא ימשיך לאחרים
-          ARGS="--cookies cookies.txt --no-playlist --ignore-errors --extractor-args youtube:player_client=android,web --js-runtimes node --embed-thumbnail --add-metadata"
+          # הערה: הסרתי את --restrict-filenames כדי לאפשר שמות בעברית עם רווחים כפי שהם במקור
+          ARGS="--cookies cookies.txt --no-playlist --extractor-args youtube:player_client=android,web --js-runtimes node"
           
-          # סינון משולב: בודק גם כותרת (title) וגם תיאור (description)
-          # (?i) הופך את זה ללא רגיש לאותיות גדולות/קטנות
-          FILTER="title!~*(?i)($BLOCK_LIST) & description!~*(?i)($BLOCK_LIST)"
-
           if [ "$FORMAT" = "mp3" ]; then
-            yt-dlp $ARGS --match-filter "$FILTER" -x --audio-format mp3 -o "yt_output/%(title)s.%(ext)s" "$URL"
+            # שימוש ב-Template ששואב את ה-Title ושם אותו בתוך גרשיים
+            yt-dlp $ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "yt_output/\"%(title)s\".%(ext)s" "$URL"
           else
-            yt-dlp $ARGS --match-filter "$FILTER" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "yt_output/%(title)s.%(ext)s" "$URL"
+            # אותו דבר עבור פורמט MP4
+            yt-dlp $ARGS -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "yt_output/\"%(title)s\".%(ext)s" "$URL"
           fi
           
           rm cookies.txt
@@ -61,7 +57,9 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "yt_output/*"
-          tag: "v${{ github.run_number }}"
+          # שינוי ה-Tag למספר הריצה הסידורי
+          tag: "v${{ github.run_number }}" 
+          # שינוי הכותרת שמופיעה בתמונה למספר הריצה
           name: "הורדה מספר ${{ github.run_number }}"
           body: "הקובץ מוכן להורדה."
           token: ${{ secrets.GITHUB_TOKEN }}
