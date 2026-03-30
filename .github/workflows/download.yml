@@ -37,20 +37,22 @@ jobs:
           URL="${{ github.event.inputs.yt_urls }}"
           FORMAT="${{ github.event.inputs.format }}"
           
-          # --- כאן אתה עורך את רשימת המילים האסורות (בתוך הקוד) ---
-          # פשוט תוסיף מילים ותפריד אותן בסימן | (קו אנכי)
-          FILTER_REGEX="יהודה|סקס|פורנו|sex|porn|אודיה"
-          # ----------------------------------------------------
+          # --- רשימת מילים לחסימה (ערוך כאן בלבד) ---
+          # המילים מופרדות בסימן | ללא רווחים מיותרים
+          BLOCK_LIST="יהודה|סקס|פורנו|sex|porn"
+          # ---------------------------------------
 
+          # הגדרות בסיסיות
           ARGS="--cookies cookies.txt --no-playlist --extractor-args youtube:player_client=android,web --js-runtimes node --embed-thumbnail --add-metadata"
           
-          # הפילטר בודק אם הכותרת מכילה את אחת המילים ((?i) הופך את זה ללא רגיש לאותיות גדולות/קטנות באנגלית)
-          MATCH_FILTER="--match-filter title!~*(?i)($FILTER_REGEX)"
+          # בניית הפילטר בצורה בטוחה ללא סוגריים שיכולים לשבור את הריצה
+          # הסבר: title!~* אומר "אל תוריד אם הכותרת מכילה (בלי קשר לאותיות גדולות/קטנות)"
+          FILTER="title!~*(?i)$BLOCK_LIST"
 
           if [ "$FORMAT" = "mp3" ]; then
-            yt-dlp $ARGS "$MATCH_FILTER" -x --audio-format mp3 -o "yt_output/%(title)s.%(ext)s" "$URL"
+            yt-dlp $ARGS --match-filter "$FILTER" -x --audio-format mp3 -o "yt_output/%(title)s.%(ext)s" "$URL"
           else
-            yt-dlp $ARGS "$MATCH_FILTER" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "yt_output/%(title)s.%(ext)s" "$URL"
+            yt-dlp $ARGS --match-filter "$FILTER" -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "yt_output/%(title)s.%(ext)s" "$URL"
           fi
           
           rm cookies.txt
