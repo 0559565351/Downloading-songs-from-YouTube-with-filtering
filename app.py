@@ -38,7 +38,7 @@ if repo:
                 # ניקוי הקישורים (הפיכת שורות חדשות לפסיקים)
                 clean_urls = ",".join([url.strip() for url in urls.split("\n") if url.strip()])
                 
-                # מציאת ה-Workflow לפי שם הקובץ (ודא ששם הקובץ ב-GitHub הוא main.yml או שנה כאן)
+                # מציאת ה-Workflow לפי שם הקובץ (ודא ששם הקובץ ב-GitHub הוא download.yml או שנה כאן)
                 # אפשר גם לפי השם שכתוב בתוך ה-YAML: "Smart Download: Single MP3 or ZIP"
                 workflow = repo.get_workflow("main.yml") # <--- שנה את זה לשם קובץ ה-YAML שלך ב-GitHub!
                 
