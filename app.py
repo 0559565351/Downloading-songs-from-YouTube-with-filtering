@@ -1,6 +1,6 @@
 import streamlit as st
 from github import Github
-from github import Auth  # הוספת ייבוא לצורך אימות תקין
+from github import Auth
 import os
 
 # כותרת האפליקציה
@@ -28,6 +28,7 @@ def load_github_repo():
         return repo
 
     except Exception as e:
+        repo_name = st.secrets.get("REPO_NAME", "unknown")  # ✅ תיקון
         if "401" in str(e):
             st.error("שגיאת אימות (401): הטוקן של GitHub אינו תקין או פג תוקף.")
         elif "404" in str(e):
