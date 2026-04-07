@@ -22,7 +22,7 @@ if st.button("הורדה"):
     else:
         try:
             # 1. הפעלת ה-Workflow
-            workflow = repo.get_workflow("main.yml") # וודא שזה שם הקובץ בגיטהאב
+            workflow = repo.get_workflow("download.yml") # וודא שזה שם הקובץ בגיטהאב
             workflow.create_dispatch(
                 ref="main",
                 inputs={
