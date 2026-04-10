@@ -1,4 +1,3 @@
-# --- זמרות ישראליות ---
 נועה קירל
 Noa Kirel
 עדן בן זקן
@@ -111,8 +110,6 @@ Ness and Stilla
 Ness
 אקו
 Echo
-
-# --- זמרות בינלאומיות ---
 Taylor Swift
 טיילור סוויפט
 Beyonce
