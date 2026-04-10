@@ -64,25 +64,41 @@ jobs:
           import os
           import shutil
 
+          # 1. טעינת רשימת הסינון
+          bad_words = []
+          if os.path.exists("filters.txt"):
+              with open("filters.txt", "r", encoding="utf-8") as f:
+                  bad_words = [line.strip().lower() for line in f if line.strip()]
+          
           source_dir = "yt_output"
-          files = os.listdir(source_dir)
-          print(f"Found {len(files)} files: {files}")
+          all_files = os.listdir(source_dir)
+          files_to_process = []
 
-          if len(files) == 0:
-              print("No files found!")
+          # 2. סינון הקבצים
+          for filename in all_files:
+              # בדיקה אם אחת המילים האסורות נמצאת בשם הקובץ
+              if any(bad_word in filename.lower() for bad_word in bad_words):
+                  print(f"Skipping (filtered): {filename}")
+                  os.remove(os.path.join(source_dir, filename))
+              else:
+                  files_to_process.append(filename)
+
+          print(f"Remaining files: {files_to_process}")
+
+          if len(files_to_process) == 0:
+              print("No valid files found after filtering!")
               exit(1)
 
-          if len(files) > 1:
-              # אם יש כמה קבצים, נשתמש ב-ZIP (שמות בתוך הזיפ ישמרו בעברית)
+          # 3. יצירת ה-ZIP או טיפול בקובץ בודד
+          if len(files_to_process) > 1:
               os.system("zip -r -j 'songs_collection.zip' yt_output/*")
               final_artifact = "songs_collection.zip"
           else:
-              # קובץ יחיד - מעבירים אותו לתיקייה הראשית ושומרים על השם המקורי
-              filename = files[0]
+              filename = files_to_process[0]
               shutil.move(os.path.join(source_dir, filename), filename)
               final_artifact = filename
 
-          # כתיבה לתוך ה-GITHUB_ENV בצורה בטוחה לעברית
+          # כתיבה ל-GITHUB_ENV
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
               f.write(f"FINAL_ARTIFACT={final_artifact}\n")
 
