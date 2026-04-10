@@ -64,7 +64,6 @@ Roni Superstar
 מאיה בוסקילה
 Maya Buskila
 אביבית בר זוהר
-שפיטה
 Shefita
 שרון חזיז
 Sharon Haziz
@@ -106,7 +105,6 @@ Jane Bordeaux
 Carcukli
 נס וסטילה
 Ness and Stilla
-נס
 Ness
 אקו
 Echo
@@ -173,7 +171,6 @@ Halsey
 Lorde
 לורד
 Pink
-פינק
 Avril Lavigne
 אבריל לאבין
 Amy Winehouse
@@ -197,9 +194,7 @@ Karol G
 Anitta
 אניטה
 Kesha
-קשה
 Cher
-שר
 Tina Turner
 טינה טרנר
 Aretha Franklin
@@ -243,17 +238,13 @@ Gwen Stefani
 Kylie Minogue
 קיילי מינוג
 Lulu
-לולו
 Bjork
 ביורק
 Jorja Smith
 ג'ורג'ה סמית'
 H.E.R.
-הר
 Summer Walker
 סאמר ווקר
-Kehlani
-קהלני
 Jhene Aiko
 ג'נה אייקו
 Willow Smith
