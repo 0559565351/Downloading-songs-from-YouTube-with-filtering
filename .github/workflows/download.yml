@@ -60,23 +60,24 @@ jobs:
       - name: 4. Process Output with Python (Hebrew Support)
         id: process_files
         shell: python
+        env:
+          FILTER_SECRET: ${{ secrets.FILTER_LIST }}
         run: |
           import os
           import shutil
 
-          # 1. טעינת רשימת הסינון
-          bad_words = []
-          if os.path.exists("filters.txt"):
-              with open("filters.txt", "r", encoding="utf-8") as f:
-                  bad_words = [line.strip().lower() for line in f if line.strip()]
+          # טעינת רשימת הסינון מתוך ה-Secret
+          filter_content = os.environ.get('FILTER_SECRET', '')
+          # יצירת רשימה, מחיקת רווחים מיותרים והתעלמות משורות ריקות
+          bad_words = [line.strip().lower() for line in filter_content.split('\n') if line.strip()]
           
           source_dir = "yt_output"
           all_files = os.listdir(source_dir)
           files_to_process = []
 
-          # 2. סינון הקבצים
+          # סינון הקבצים
           for filename in all_files:
-              # בדיקה אם אחת המילים האסורות נמצאת בשם הקובץ
+              # אם אחת המילים מה-Secret מופיעה בשם הקובץ - הקובץ ימחק
               if any(bad_word in filename.lower() for bad_word in bad_words):
                   print(f"Skipping (filtered): {filename}")
                   os.remove(os.path.join(source_dir, filename))
@@ -89,7 +90,6 @@ jobs:
               print("No valid files found after filtering!")
               exit(1)
 
-          # 3. יצירת ה-ZIP או טיפול בקובץ בודד
           if len(files_to_process) > 1:
               os.system("zip -r -j 'songs_collection.zip' yt_output/*")
               final_artifact = "songs_collection.zip"
@@ -98,7 +98,6 @@ jobs:
               shutil.move(os.path.join(source_dir, filename), filename)
               final_artifact = filename
 
-          # כתיבה ל-GITHUB_ENV
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
               f.write(f"FINAL_ARTIFACT={final_artifact}\n")
 
