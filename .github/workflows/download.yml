@@ -21,36 +21,45 @@ jobs:
       - name: 2. Install Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
+          # התקנת הגרסה הכי חדשה של yt-dlp בכל הרצה
           sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
           sudo chmod a+rx /usr/local/bin/yt-dlp
 
       - name: 3. Download and Filter
+        env:
+          INPUT_URLS: ${{ github.event.inputs.yt_urls }}
+          YT_FORMAT: ${{ github.event.inputs.format }}
         run: |
           mkdir -p yt_output
           
           # רשימת מילים אסורות (סינון מחמיר מאוד)
           BLACKLIST="זין,זיין,שמוק,כוס,פות,פותה,דגדגן,פין,ביצים,אשכים,פטמות,שדיים,ציצי,תחת,ישבן,אנאלי,וגינה,שפיכה,גמירה,מציצה,אוננות,זרע,פורנו,סקס,זנות,זונה,חשפנות,עירום,ביקיני,לנז'רי,נועה קירל,עדן בן זקן,אנה זק,אגם בוחבוט,אודיה,יסמין מועלם,שרית חדד,מירי מסיקה,קרן פלס,נטע ברזילי,ריטה,נינט,שירי מימון,עדן גולן,נטע אלחמיסטר,בר רפאלי,עדן פינס,יעל שלביה,שלומית מלכה,רותם סלע,Kim Kardashian,Kylie Jenner,Gigi Hadid,Bella Hadid,porn,sexy,nude,naked,xxx,blowjob,ass,fuck,dick"
 
-          # המרת רשימת הקישורים למערך
-          IFS=',' read -ra ADDR <<< "${{ github.event.inputs.yt_urls }}"
-          
-          for URL in "${ADDR[@]}"; do
-            URL=$(echo $URL | xargs) # ניקוי רווחים
+          # פיצול הקישורים בצורה בטוחה שמונעת שגיאות גרשיים
+          echo "$INPUT_URLS" | tr ',' '\n' > urls_list.txt
+
+          while read -r URL || [ -n "$URL" ]; do
             [ -z "$URL" ] && continue
+            CLEAN_URL=$(echo "$URL" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             
-            echo "Checking: $URL"
+            echo "Checking: $CLEAN_URL"
             
-            # שליפת כותרת הסרטון
-            TITLE=$(yt-dlp --get-title --no-playlist "$URL" || echo "Unknown Title")
+            # ניסיון לשליפת כותרת עם "זהות בדויה" כדי למנוע חסימת בוטים
+            TITLE=$(yt-dlp --get-title --no-playlist --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" --extractor-args "youtube:player_client=android,web" "$CLEAN_URL" || echo "Unknown Title")
+            
             echo "Title: $TITLE"
             
-            # בדיקת סינון (עובר על כל המילים ברשימה)
+            if [ "$TITLE" = "Unknown Title" ]; then
+                echo "⚠️ לא הצלחתי לשלוף כותרת (ייתכן שיוטיוב חסם את השרת). מנסה להוריד בכל זאת..."
+            fi
+
+            # בדיקת סינון
             CLEAN_TITLE=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]')
             IFS=',' read -ra WORDS <<< "$BLACKLIST"
             
             FORBIDDEN_FOUND=""
             for WORD in "${WORDS[@]}"; do
-              WORD_LOWER=$(echo "$WORD" | tr '[:upper:]' '[:lower:]' | xargs)
+              WORD_LOWER=$(echo "$WORD" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
               if [[ "$CLEAN_TITLE" == *"$WORD_LOWER"* ]]; then
                 FORBIDDEN_FOUND="$WORD"
                 break
@@ -58,25 +67,26 @@ jobs:
             done
             
             if [ -n "$FORBIDDEN_FOUND" ]; then
-              echo "❌ חסימה! הסרטון נחסם בגלל המילה: '$FORBIDDEN_FOUND'"
+              echo "❌ חסימה! הסרטון '$TITLE' נחסם בגלל המילה: '$FORBIDDEN_FOUND'"
               continue
             fi
             
-            # אם עבר את הסינון - מוריד
-            echo "✅ מאושר להורדה."
-            if [ "${{ github.event.inputs.format }}" = "mp3" ]; then
-              yt-dlp --no-playlist --no-restrict-filenames --windows-filenames -x --audio-format mp3 --add-metadata -o "yt_output/%(title)s.%(ext)s" "$URL"
+            # הורדה עם הגדרות עקיפה מתקדמות
+            COMMON_ARGS="--no-playlist --no-restrict-filenames --windows-filenames --user-agent 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' --extractor-args 'youtube:player_client=android,web'"
+            
+            if [ "$YT_FORMAT" = "mp3" ]; then
+              yt-dlp $COMMON_ARGS -x --audio-format mp3 --add-metadata -o "yt_output/%(title)s.%(ext)s" "$CLEAN_URL"
             else
-              yt-dlp --no-playlist --no-restrict-filenames --windows-filenames -f "bestvideo+bestaudio/best" --merge-output-format mp4 -o "yt_output/%(title)s.%(ext)s" "$URL"
+              yt-dlp $COMMON_ARGS -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "yt_output/%(title)s.%(ext)s" "$CLEAN_URL"
             fi
-          done
+          done < urls_list.txt
 
       - name: 4. Process Output
         id: process
         run: |
           FILE_COUNT=$(ls -1 yt_output | wc -l)
           if [ "$FILE_COUNT" -eq 0 ]; then
-            echo "No files to download (maybe all were filtered)."
+            echo "No files to download."
             exit 1
           fi
           
@@ -95,6 +105,5 @@ jobs:
           artifacts: "${{ env.FINAL_ARTIFACT }}"
           tag: "v${{ github.run_number }}"
           name: "הורדה מספר ${{ github.run_number }}"
-          body: "הורדה מוכנה. סינון פעיל."
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
