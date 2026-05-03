@@ -15,7 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions: write-all
     env:
-      # הגדרות שפה גלובליות לכל ה-Job
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
       PYTHONIOENCODING: utf-8
@@ -47,7 +46,6 @@ jobs:
             CLEAN_URL=$(echo "$URL" | xargs)
             [ -z "$CLEAN_URL" ] && continue
             
-            # הדגש: --no-restrict-filenames ושימוש בקידוד UTF-8
             COMMON_ARGS="$COOKIE_ARG --no-playlist --no-restrict-filenames --windows-filenames --extractor-args youtube:player_client=android,web --js-runtimes node"
             
             if [ "$FORMAT" = "mp3" ]; then
@@ -57,7 +55,7 @@ jobs:
             fi
           done < urls.txt
 
-      - name: 4. Process Output with Python (Hebrew Support)
+      - name: 4. Process Output with Python (Sanitize Filenames)
         id: process_files
         shell: python
         env:
@@ -66,38 +64,37 @@ jobs:
           import os
           import shutil
 
-          # טעינת רשימת הסינון מתוך ה-Secret
           filter_content = os.environ.get('FILTER_SECRET', '')
-          # יצירת רשימה, מחיקת רווחים מיותרים והתעלמות משורות ריקות
           bad_words = [line.strip().lower() for line in filter_content.split('\n') if line.strip()]
           
           source_dir = "yt_output"
           all_files = os.listdir(source_dir)
           files_to_process = []
 
-          # סינון הקבצים
           for filename in all_files:
-              # אם אחת המילים מה-Secret מופיעה בשם הקובץ - הקובץ ימחק
               if any(bad_word in filename.lower() for bad_word in bad_words):
                   print(f"Skipping (filtered): {filename}")
                   os.remove(os.path.join(source_dir, filename))
               else:
                   files_to_process.append(filename)
 
-          print(f"Remaining files: {files_to_process}")
-
-          if len(files_to_process) == 0:
+          if not files_to_process:
               print("No valid files found after filtering!")
               exit(1)
 
           if len(files_to_process) > 1:
+              # אם יש כמה קבצים, נארוז ב-ZIP (שם ה-ZIP לא מכיל פסיקים אז זה בטוח)
               os.system("zip -r -j 'songs_collection.zip' yt_output/*")
               final_artifact = "songs_collection.zip"
           else:
-              filename = files_to_process[0]
-              shutil.move(os.path.join(source_dir, filename), filename)
-              final_artifact = filename
+              # אם יש קובץ אחד, ננקה את שמו מפסיקים כדי לא לשבור את ה-Release
+              old_name = files_to_process[0]
+              new_name = old_name.replace(",", " ").replace(";", " ") # החלפת פסיק ברווח
+              shutil.move(os.path.join(source_dir, old_name), new_name)
+              final_artifact = new_name
 
+          print(f"Final Artifact: {final_artifact}")
+          
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
               f.write(f"FINAL_ARTIFACT={final_artifact}\n")
 
@@ -107,6 +104,6 @@ jobs:
           artifacts: "${{ env.FINAL_ARTIFACT }}"
           tag: "v${{ github.run_number }}"
           name: "הורדה מספר ${{ github.run_number }}"
-          body: "הורדה מוכנה. שם הקובץ: ${{ env.FINAL_ARTIFACT }}"
+          body: "ההורדה מוכנה!"
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
