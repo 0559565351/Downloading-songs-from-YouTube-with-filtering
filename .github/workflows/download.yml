@@ -59,7 +59,7 @@ jobs:
         id: process_files
         shell: python
         env:
-          FILTER_SECRET: ${{ secrets.FILTER_LIST }}
+          FILTER_SECRET: ${{ vars.FILTER_LIST }}
         run: |
           import os
           import shutil
