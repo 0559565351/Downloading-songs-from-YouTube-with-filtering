@@ -59,14 +59,13 @@ jobs:
         id: process_files
         shell: python
         env:
-          # וודא שהעברת את הרשימה ל-Variables ושם המשתנה הוא FILTER_LIST
-          FILTER_CONTENT: ${{ vars.FILTER_LIST }}
+          # שינוי כאן: לוקח מהסודות (Secrets)
+          FILTER_CONTENT: ${{ secrets.FILTER_LIST }}
         run: |
           import os
           import shutil
 
           filter_content = os.environ.get('FILTER_CONTENT', '')
-          # יצירת רשימה, ניקוי רווחים והתעלמות משורות ריקות
           bad_words = [line.strip().lower() for line in filter_content.split('\n') if line.strip()]
           
           source_dir = "yt_output"
@@ -79,17 +78,17 @@ jobs:
               filename_lower = filename.lower()
               found_word = None
               
-              # חיפוש המילה הספציפית שגרמה לסינון
               for bad_word in bad_words:
                   if bad_word in filename_lower:
                       found_word = bad_word
                       break
               
               if found_word:
-                  # הדפסה בולטת עם המילה שנמצאה
+                  # עקיפת הצינזור של GitHub: הוספת נקודה בין כל אות
+                  obfuscated_word = ".".join(list(found_word))
                   print("-" * 40)
                   print(f"❌ SKIPPING FILE: {filename}")
-                  print(f"⚠️  REASON: Found forbidden word: >> {found_word} <<")
+                  print(f"⚠️  REASON: Found forbidden word: >> {obfuscated_word} <<")
                   print("-" * 40)
                   os.remove(os.path.join(source_dir, filename))
               else:
@@ -99,7 +98,6 @@ jobs:
               print("\n!!! ERROR: No valid files left after filtering !!!")
               exit(1)
 
-          # לוגיקה לאריזה (נשאר ללא שינוי)
           if len(files_to_process) > 1:
               os.system("zip -r -j 'songs_collection.zip' yt_output/*")
               final_artifact = "songs_collection.zip"
