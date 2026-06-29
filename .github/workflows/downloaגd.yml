@@ -1,0 +1,63 @@
+name: "Direct File Downloader to Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'הדבק את קישור ההורדה הישיר (Direct Link)'
+        required: true
+      custom_filename:
+        description: 'שם לקובץ (אופציונלי, השאר ריק לזיהוי אוטומטי)'
+        required: false
+
+jobs:
+  download_job:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+      - name: 1. Checkout code
+        uses: actions/checkout@v4
+
+      - name: 2. Download File
+        id: download_step
+        run: |
+          mkdir -p downloads
+          URL="${{ github.event.inputs.file_url }}"
+          CUSTOM_NAME="${{ github.event.inputs.custom_filename }}"
+          
+          echo "Downloading from: $URL"
+          
+          # אם המשתמש נתן שם ידני, נשתמש בו. אחרת, ננסה לחלץ מה-URL
+          if [ -n "$CUSTOM_NAME" ]; then
+            FILENAME="$CUSTOM_NAME"
+          else
+            FILENAME=$(basename "$URL" | cut -d? -f1)
+          fi
+          
+          # הורדת הקובץ באמצעות curl
+          # -L עוקב אחרי הפניות (Redirects)
+          # -o קובע את שם הפלט
+          curl -L "$URL" -o "downloads/$FILENAME"
+          
+          if [ ! -f "downloads/$FILENAME" ]; then
+            echo "Error: Download failed!"
+            exit 1
+          fi
+          
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          echo "FILEPATH=downloads/$FILENAME" >> $GITHUB_ENV
+          echo "✅ Downloaded: $FILENAME"
+
+      - name: 3. Create Release and Upload
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.FILEPATH }}"
+          tag: "v${{ github.run_number }}-${{ github.run_id }}"
+          name: "הורדת קובץ מספר ${{ github.run_number }}"
+          body: |
+            הקובץ הורד בהצלחה!
+            **שם הקובץ:** ${{ env.FILENAME }}
+            **מקור:** ${{ github.event.inputs.file_url }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
