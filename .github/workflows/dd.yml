@@ -1,0 +1,55 @@
+name: "Download Original File to Release"
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: 'הדבק קישור ישיר לקובץ (למשל APK)'
+        required: true
+
+jobs:
+  download_job:
+    runs-on: ubuntu-latest
+    permissions: write-all
+
+    steps:
+      - name: 1. Checkout code
+        uses: actions/checkout@v4
+
+      - name: 2. Download File with Original Name
+        id: download_step
+        run: |
+          mkdir -p downloads
+          cd downloads
+          
+          # הורדה ושמירה בשם המקורי שהשרת מציע
+          # -L: עוקב אחרי הפניות
+          # -O: שומר בשם המרוחק
+          # -J: משתמש בשם מה-Header של השרת (אם קיים)
+          URL="${{ github.event.inputs.file_url }}"
+          curl -L -O -J "$URL"
+          
+          # זיהוי שם הקובץ שנוצר בתיקייה
+          FILENAME=$(ls -1 | head -n 1)
+          
+          if [ -z "$FILENAME" ]; then
+            echo "Error: No file was downloaded!"
+            exit 1
+          fi
+          
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
+          echo "FILEPATH=downloads/$FILENAME" >> $GITHUB_ENV
+          echo "✅ Downloaded original file: $FILENAME"
+
+      - name: 3. Create Release and Upload
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "${{ env.FILEPATH }}"
+          tag: "v${{ github.run_number }}-${{ github.run_id }}"
+          name: "קובץ מקורי: ${{ env.FILENAME }}"
+          body: |
+            הקובץ הורד ונשמר בשמו המקורי.
+            **שם הקובץ:** `${{ env.FILENAME }}`
+            **מקור:** ${{ github.event.inputs.file_url }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allowUpdates: true
