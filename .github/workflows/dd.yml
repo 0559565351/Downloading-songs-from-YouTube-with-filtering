@@ -1,55 +1,97 @@
-name: "Download Original File to Release"
+name: "Smart APK Downloader"
 
 on:
   workflow_dispatch:
     inputs:
-      file_url:
-        description: 'הדבק קישור ישיר לקובץ (למשל APK)'
+      url:
+        description: 'הדבק את הקישור לדף ה-APKMirror'
         required: true
 
 jobs:
-  download_job:
+  download_apk:
     runs-on: ubuntu-latest
     permissions: write-all
 
     steps:
-      - name: 1. Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: 2. Download File with Original Name
-        id: download_step
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+          playwright install-deps
+
+      - name: Extract and Download APK
+        id: extract
+        run: |
+          # יצירת סקריפט פייתון לחילוץ
+          cat << 'EOF' > extractor.py
+          import sys
+          import time
+          from playwright.sync_api import sync_playwright
+
+          def get_download_link(url):
+              with sync_playwright() as p:
+                  browser = p.chromium.launch(headless=True)
+                  page = browser.new_page()
+                  
+                  print(f"Navigating to: {url}")
+                  page.goto(url, wait_until="networkidle")
+
+                  # 1. חיפוש כפתור ה-Download APK הראשון
+                  download_button = page.query_selector("text='Download APK'")
+                  if not download_button:
+                      print("Could not find Download button")
+                      sys.exit(1)
+                  
+                  download_button.click()
+                  page.wait_for_load_state("networkidle")
+
+                  # 2. בדף הבא, מחפשים את הקישור הסופי (שמתחיל ב-Download starting)
+                  # לפעמים צריך לחכות כמה שניות
+                  time.sleep(5)
+                  
+                  # מחפשים את הקישור הישיר בתוך הטקסט "here" אם ההורדה לא התחילה
+                  final_link_element = page.query_selector("a:has-text('here')")
+                  if final_link_element:
+                      final_url = final_link_element.get_attribute("href")
+                      # בניית URL מלא אם הוא יחסי
+                      if final_url.startswith('/'):
+                          final_url = "https://www.apkmirror.com" + final_url
+                      print(f"FOUND_URL={final_url}")
+                  else:
+                      print("Could not find final download link")
+                      sys.exit(1)
+
+                  browser.close()
+
+          if __name__ == "__main__":
+              get_download_link(sys.argv[1])
+          EOF
+          
+          # הרצת הסקריפט ושמירת התוצאה
+          RESULT=$(python3 extractor.py "${{ github.event.inputs.url }}" | grep "FOUND_URL=" | cut -d'=' -f2)
+          echo "DIRECT_URL=$RESULT" >> $GITHUB_ENV
+
+      - name: Download the file
         run: |
           mkdir -p downloads
           cd downloads
-          
-          # הורדה ושמירה בשם המקורי שהשרת מציע
-          # -L: עוקב אחרי הפניות
-          # -O: שומר בשם המרוחק
-          # -J: משתמש בשם מה-Header של השרת (אם קיים)
-          URL="${{ github.event.inputs.file_url }}"
-          curl -L -O -J "$URL"
-          
-          # זיהוי שם הקובץ שנוצר בתיקייה
+          curl -L -O -J "${{ env.DIRECT_URL }}"
           FILENAME=$(ls -1 | head -n 1)
-          
-          if [ -z "$FILENAME" ]; then
-            echo "Error: No file was downloaded!"
-            exit 1
-          fi
-          
-          echo "FILENAME=$FILENAME" >> $GITHUB_ENV
-          echo "FILEPATH=downloads/$FILENAME" >> $GITHUB_ENV
-          echo "✅ Downloaded original file: $FILENAME"
+          echo "FINAL_NAME=$FILENAME" >> $GITHUB_ENV
+          echo "FINAL_PATH=downloads/$FILENAME" >> $GITHUB_ENV
 
-      - name: 3. Create Release and Upload
+      - name: Create Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "${{ env.FILEPATH }}"
-          tag: "v${{ github.run_number }}-${{ github.run_id }}"
-          name: "קובץ מקורי: ${{ env.FILENAME }}"
-          body: |
-            הקובץ הורד ונשמר בשמו המקורי.
-            **שם הקובץ:** `${{ env.FILENAME }}`
-            **מקור:** ${{ github.event.inputs.file_url }}
+          artifacts: "${{ env.FINAL_PATH }}"
+          tag: "apk-${{ github.run_number }}"
+          name: "הורדת APK: ${{ env.FINAL_NAME }}"
           token: ${{ secrets.GITHUB_TOKEN }}
-          allowUpdates: true
