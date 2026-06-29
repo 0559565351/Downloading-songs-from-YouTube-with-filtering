@@ -1,4 +1,4 @@
-name: "Smart APK Downloader"
+name: "Smart APK Downloader V2"
 
 on:
   workflow_dispatch:
@@ -30,65 +30,80 @@ jobs:
       - name: Extract and Download APK
         id: extract
         run: |
-          # יצירת סקריפט פייתון לחילוץ
           cat << 'EOF' > extractor.py
           import sys
+          import os
           import time
           from playwright.sync_api import sync_playwright
 
           def get_download_link(url):
               with sync_playwright() as p:
+                  # שימוש ב-User Agent של דפדפן רגיל כדי למנוע חסימה
                   browser = p.chromium.launch(headless=True)
-                  page = browser.new_page()
+                  context = browser.new_context(
+                      user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+                  )
+                  page = context.new_page()
                   
-                  print(f"Navigating to: {url}")
-                  page.goto(url, wait_until="networkidle")
+                  try:
+                      print(f"Navigating to: {url}")
+                      page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
-                  # 1. חיפוש כפתור ה-Download APK הראשון
-                  download_button = page.query_selector("text='Download APK'")
-                  if not download_button:
-                      print("Could not find Download button")
+                      # לחיצה על כפתור ההורדה הראשון (הכפתור האדום הגדול)
+                      # נחפש כפתור שמכיל את המילה Download וסיומת APK
+                      download_btn = page.locator("a.download-button, a:has-text('Download APK')").first
+                      if download_btn.is_visible():
+                          print("Clicking first download button...")
+                          download_btn.click()
+                      else:
+                          print("First button not found, maybe we are already on the final page?")
+
+                      # המתנה לדף הסופי שבו מופיע הקישור "here"
+                      page.wait_for_selector("a:has-text('here')", timeout=30000)
+                      time.sleep(3) # המתנה קלה לטעינת הקישור
+
+                      final_link_element = page.locator("a:has-text('here')").first
+                      if final_link_element:
+                          final_url = final_link_element.get_attribute("href")
+                          if final_url.startswith('/'):
+                              final_url = "https://www.apkmirror.com" + final_url
+                          
+                          print(f"Success! Found URL: {final_url}")
+                          
+                          # כתיבה ישירות לתוך ה-GITHUB_ENV
+                          with open(os.environ['GITHUB_ENV'], 'a') as f:
+                              f.write(f"DIRECT_URL={final_url}\n")
+                      else:
+                          print("Could not find final download link")
+                          sys.exit(1)
+
+                  except Exception as e:
+                      print(f"Error occurred: {e}")
+                      # צילום מסך לצורך דיבאג (יופיע בתוך ה-Log אם תרצה)
+                      page.screenshot(path="error.png")
                       sys.exit(1)
-                  
-                  download_button.click()
-                  page.wait_for_load_state("networkidle")
-
-                  # 2. בדף הבא, מחפשים את הקישור הסופי (שמתחיל ב-Download starting)
-                  # לפעמים צריך לחכות כמה שניות
-                  time.sleep(5)
-                  
-                  # מחפשים את הקישור הישיר בתוך הטקסט "here" אם ההורדה לא התחילה
-                  final_link_element = page.query_selector("a:has-text('here')")
-                  if final_link_element:
-                      final_url = final_link_element.get_attribute("href")
-                      # בניית URL מלא אם הוא יחסי
-                      if final_url.startswith('/'):
-                          final_url = "https://www.apkmirror.com" + final_url
-                      print(f"FOUND_URL={final_url}")
-                  else:
-                      print("Could not find final download link")
-                      sys.exit(1)
-
-                  browser.close()
+                  finally:
+                      browser.close()
 
           if __name__ == "__main__":
               get_download_link(sys.argv[1])
           EOF
           
-          # הרצת הסקריפט ושמירת התוצאה
-          RESULT=$(python3 extractor.py "${{ github.event.inputs.url }}" | grep "FOUND_URL=" | cut -d'=' -f2)
-          echo "DIRECT_URL=$RESULT" >> $GITHUB_ENV
+          python3 extractor.py "${{ github.event.inputs.url }}"
 
       - name: Download the file
+        if: env.DIRECT_URL != ''
         run: |
           mkdir -p downloads
           cd downloads
-          curl -L -O -J "${{ env.DIRECT_URL }}"
+          # שימוש בקישור שחולץ
+          curl -L -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64)" -O -J "${{ env.DIRECT_URL }}"
           FILENAME=$(ls -1 | head -n 1)
           echo "FINAL_NAME=$FILENAME" >> $GITHUB_ENV
           echo "FINAL_PATH=downloads/$FILENAME" >> $GITHUB_ENV
 
       - name: Create Release
+        if: env.FINAL_NAME != ''
         uses: ncipollo/release-action@v1
         with:
           artifacts: "${{ env.FINAL_PATH }}"
