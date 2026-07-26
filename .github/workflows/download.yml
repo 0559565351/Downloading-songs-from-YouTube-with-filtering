@@ -46,14 +46,16 @@ jobs:
           while IFS= read -r CLEAN_URL || [ -n "$CLEAN_URL" ]; do
             echo "Processing: $CLEAN_URL"
             
-            # הגדרות כלליות עם התעלמות משגיאות כדי לא לעצור את הריצה
-            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --no-restrict-filenames --windows-filenames --extractor-args youtube:player_client=android,web --js-runtimes node"
+            # הוספת הגבלת אורך שם קובץ ל-100 תווים כדי למנוע שגיאות מערכת
+            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --no-restrict-filenames --windows-filenames --trim-filenames 100 --extractor-args youtube:player_client=android,web --js-runtimes node"
             
+            # שימוש בתבנית פלט המגבילה את אורך הכותרת ל-100 תווים
+            OUTPUT_TEMPLATE="yt_output/%(title).100s.%(ext)s"
+
             if [ "$FORMAT" = "mp3" ]; then
-              yt-dlp $COMMON_ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "yt_output/%(title)s.%(ext)s" "$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
+              yt-dlp $COMMON_ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
             else
-              # פורמט גמיש: ינסה MP4, ואם אין יוריד את הכי טוב וימיר ל-MP4 בעזרת ffmpeg
-              yt-dlp $COMMON_ARGS -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "yt_output/%(title)s.%(ext)s" "$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
+              yt-dlp $COMMON_ARGS -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
             fi
           done < urls.txt
 
@@ -72,7 +74,7 @@ jobs:
           
           source_dir = "yt_output"
           if not os.path.exists(source_dir) or not os.listdir(source_dir):
-              print("❌ No files were downloaded. Check your URLs.")
+              print("❌ No files were downloaded. Check your URLs and Cookies.")
               exit(1)
 
           all_files = os.listdir(source_dir)
@@ -94,9 +96,13 @@ jobs:
                   print(f"❌ SKIPPING: {filename} (Found: {obfuscated_word})")
                   os.remove(os.path.join(source_dir, filename))
               else:
-                  # ניקוי תווים בעייתיים משם הקובץ למניעת תקלות ב-Artifact
-                  clean_name = re.sub(r'[;,]', ' ', filename)
+                  # ניקוי תווים בעייתיים נוספים
+                  clean_name = re.sub(r'[;,#%&{}]', ' ', filename)
+                  clean_name = clean_name[:150] # הגנה נוספת על אורך השם
                   if clean_name != filename:
+                      # וידוי שאין כפילויות בשמות אחרי הקיצור
+                      if os.path.exists(os.path.join(source_dir, clean_name)):
+                          clean_name = "v2_" + clean_name
                       os.rename(os.path.join(source_dir, filename), os.path.join(source_dir, clean_name))
                       files_to_process.append(clean_name)
                   else:
@@ -107,7 +113,6 @@ jobs:
               exit(1)
 
           if len(files_to_process) > 1:
-              # יצירת ZIP אם יש יותר מקובץ אחד
               os.system("zip -r -j 'collection.zip' yt_output/*")
               final_artifact = "collection.zip"
           else:
