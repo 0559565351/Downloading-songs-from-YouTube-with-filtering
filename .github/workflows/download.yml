@@ -46,16 +46,24 @@ jobs:
           while IFS= read -r CLEAN_URL || [ -n "$CLEAN_URL" ]; do
             echo "Processing: $CLEAN_URL"
             
-            # הוספת הגבלת אורך שם קובץ ל-100 תווים כדי למנוע שגיאות מערכת
-            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --no-restrict-filenames --windows-filenames --trim-filenames 100 --extractor-args youtube:player_client=android,web --js-runtimes node"
+            # --- התיקון נמצא כאן ---
+            # הוספנו --playlist-items 1 כדי להוריד רק שיר אחד גם אם זה פלייליסט
+            # הוספנו "ytsearch1:" למקרה שהמשתמש כתב שם של שיר במקום קישור
             
-            # שימוש בתבנית פלט המגבילה את אורך הכותרת ל-100 תווים
+            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --playlist-items 1 --no-restrict-filenames --windows-filenames --trim-filenames 100 --extractor-args youtube:player_client=android,web --js-runtimes node"
             OUTPUT_TEMPLATE="yt_output/%(title).100s.%(ext)s"
 
-            if [ "$FORMAT" = "mp3" ]; then
-              yt-dlp $COMMON_ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
+            # בדיקה אם הקישור הוא URL תקין, אם לא - הוספת חיפוש
+            if [[ ! "$CLEAN_URL" =~ ^http ]]; then
+               SEARCH_PREFIX="ytsearch1:"
             else
-              yt-dlp $COMMON_ARGS -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
+               SEARCH_PREFIX=""
+            fi
+
+            if [ "$FORMAT" = "mp3" ]; then
+              yt-dlp $COMMON_ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$SEARCH_PREFIX$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
+            else
+              yt-dlp $COMMON_ARGS -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$SEARCH_PREFIX$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
             fi
           done < urls.txt
 
@@ -96,11 +104,9 @@ jobs:
                   print(f"❌ SKIPPING: {filename} (Found: {obfuscated_word})")
                   os.remove(os.path.join(source_dir, filename))
               else:
-                  # ניקוי תווים בעייתיים נוספים
                   clean_name = re.sub(r'[;,#%&{}]', ' ', filename)
-                  clean_name = clean_name[:150] # הגנה נוספת על אורך השם
+                  clean_name = clean_name[:150]
                   if clean_name != filename:
-                      # וידוי שאין כפילויות בשמות אחרי הקיצור
                       if os.path.exists(os.path.join(source_dir, clean_name)):
                           clean_name = "v2_" + clean_name
                       os.rename(os.path.join(source_dir, filename), os.path.join(source_dir, clean_name))
@@ -130,6 +136,6 @@ jobs:
           artifacts: "${{ env.FINAL_ARTIFACT }}"
           tag: "v${{ github.run_number }}"
           name: "הורדה מספר ${{ github.run_number }}"
-          body: "ההורדה הושלמה בהצלחה! (קבצים לא תקינים או מסוננים הוסרו)"
+          body: "ההורדה הושלמה בהצלחה!"
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
