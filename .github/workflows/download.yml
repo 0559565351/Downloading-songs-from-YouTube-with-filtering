@@ -14,10 +14,7 @@ jobs:
   youtube_job:
     runs-on: ubuntu-latest
     permissions: write-all
-    env:
-      LANG: en_US.UTF-8
-      LC_ALL: en_US.UTF-8
-      PYTHONIOENCODING: utf-8
+    
     steps:
       - name: 1. Checkout code
         uses: actions/checkout@v4
@@ -25,35 +22,33 @@ jobs:
       - name: 2. Install Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y ffmpeg
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
+          python3 -m pip install --upgrade pip
+          pip install yt-dlp
 
       - name: 3. Download Videos
+        env:
+          YT_COOKIES: ${{ secrets.YT_COOKIES }}
         run: |
           mkdir -p yt_output
           
-          if [ -n "${{ secrets.YT_COOKIES }}" ]; then
-            echo "${{ secrets.YT_COOKIES }}" > cookies.txt
+          if [ -n "$YT_COOKIES" ]; then
+            echo "$YT_COOKIES" > cookies.txt
             COOKIE_ARG="--cookies cookies.txt"
           else
             COOKIE_ARG=""
           fi
 
           FORMAT="${{ github.event.inputs.format }}"
-          # פיצול הקישורים לקובץ, ניקוי רווחים ושורות ריקות
+          # פיצול הקישורים
           echo "${{ github.event.inputs.yt_urls }}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep . > urls.txt
 
           while IFS= read -r CLEAN_URL || [ -n "$CLEAN_URL" ]; do
             echo "Processing: $CLEAN_URL"
             
-            # --- התיקון נמצא כאן ---
-            # הוספנו --playlist-items 1 כדי להוריד רק שיר אחד גם אם זה פלייליסט
-            # הוספנו "ytsearch1:" למקרה שהמשתמש כתב שם של שיר במקום קישור
-            
-            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --playlist-items 1 --no-restrict-filenames --windows-filenames --trim-filenames 100 --extractor-args youtube:player_client=android,web --js-runtimes node"
+            # הגדרות הורדה
+            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --playlist-items 1 --no-restrict-filenames --windows-filenames --trim-filenames 100"
             OUTPUT_TEMPLATE="yt_output/%(title).100s.%(ext)s"
 
-            # בדיקה אם הקישור הוא URL תקין, אם לא - הוספת חיפוש
             if [[ ! "$CLEAN_URL" =~ ^http ]]; then
                SEARCH_PREFIX="ytsearch1:"
             else
@@ -61,13 +56,13 @@ jobs:
             fi
 
             if [ "$FORMAT" = "mp3" ]; then
-              yt-dlp $COMMON_ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$SEARCH_PREFIX$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
+              yt-dlp $COMMON_ARGS -x --audio-format mp3 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$SEARCH_PREFIX$CLEAN_URL"
             else
-              yt-dlp $COMMON_ARGS -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$SEARCH_PREFIX$CLEAN_URL" || echo "Failed to download $CLEAN_URL"
+              yt-dlp $COMMON_ARGS -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/best" --merge-output-format mp4 --embed-thumbnail --add-metadata -o "$OUTPUT_TEMPLATE" "$SEARCH_PREFIX$CLEAN_URL"
             fi
           done < urls.txt
 
-      - name: 4. Process Output with Python (Filter & Package)
+      - name: 4. Process and Package (Python)
         id: process_files
         shell: python
         env:
@@ -76,66 +71,55 @@ jobs:
           import os
           import shutil
           import re
+          import zipfile
 
           filter_content = os.environ.get('FILTER_CONTENT', '')
           bad_words = [line.strip().lower() for line in filter_content.split('\n') if line.strip()]
           
           source_dir = "yt_output"
           if not os.path.exists(source_dir) or not os.listdir(source_dir):
-              print("❌ No files were downloaded. Check your URLs and Cookies.")
+              print("❌ No files downloaded!")
               exit(1)
 
-          all_files = os.listdir(source_dir)
-          files_to_process = []
+          files = os.listdir(source_dir)
+          valid_files = []
 
-          print(f"--- Starting Filter Process ({len(all_files)} files found) ---")
-
-          for filename in all_files:
-              filename_lower = filename.lower()
-              found_word = None
+          for filename in files:
+              # סינון מילים אסורות
+              if any(word in filename.lower() for word in bad_words):
+                  print(f"❌ Skipping filtered file: {filename}")
+                  continue
               
-              for bad_word in bad_words:
-                  if bad_word in filename_lower:
-                      found_word = bad_word
-                      break
-              
-              if found_word:
-                  obfuscated_word = ".".join(list(found_word))
-                  print(f"❌ SKIPPING: {filename} (Found: {obfuscated_word})")
-                  os.remove(os.path.join(source_dir, filename))
-              else:
-                  clean_name = re.sub(r'[;,#%&{}]', ' ', filename)
-                  clean_name = clean_name[:150]
-                  if clean_name != filename:
-                      if os.path.exists(os.path.join(source_dir, clean_name)):
-                          clean_name = "v2_" + clean_name
-                      os.rename(os.path.join(source_dir, filename), os.path.join(source_dir, clean_name))
-                      files_to_process.append(clean_name)
-                  else:
-                      files_to_process.append(filename)
+              # ניקוי שם הקובץ מתווים בעייתיים למערכת הקבצים
+              clean_name = re.sub(r'[\\/*?:"<>|]', '', filename)
+              old_path = os.path.join(source_dir, filename)
+              new_path = os.path.join(source_dir, clean_name)
+              os.rename(old_path, new_path)
+              valid_files.append(clean_name)
 
-          if not files_to_process:
-              print("\n!!! ERROR: No valid files left after filtering !!!")
+          if not valid_files:
+              print("❌ No valid files remaining")
               exit(1)
 
-          if len(files_to_process) > 1:
-              os.system("zip -r -j 'collection.zip' yt_output/*")
-              final_artifact = "collection.zip"
+          # יצירת הארטיפקט הסופי
+          if len(valid_files) > 1:
+              final_name = "collection.zip"
+              with zipfile.ZipFile(final_name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                  for f in valid_files:
+                      zipf.write(os.path.join(source_dir, f), f)
           else:
-              final_artifact = files_to_process[0]
-              shutil.move(os.path.join(source_dir, files_to_process[0]), final_artifact)
+              final_name = valid_files[0]
+              shutil.move(os.path.join(source_dir, final_name), final_name)
 
-          print(f"\n✅ Final Artifact: {final_artifact}")
-          
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
-              f.write(f"FINAL_ARTIFACT={final_artifact}\n")
+              f.write(f"FINAL_ARTIFACT={final_name}\n")
 
       - name: 5. Create Release
         uses: ncipollo/release-action@v1
         with:
           artifacts: "${{ env.FINAL_ARTIFACT }}"
-          tag: "v${{ github.run_number }}"
-          name: "הורדה מספר ${{ github.run_number }}"
+          tag: "v${{ github.run_number }}-${{ github.run_id }}"
+          name: "Download #${{ github.run_number }}"
           body: "ההורדה הושלמה בהצלחה!"
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
