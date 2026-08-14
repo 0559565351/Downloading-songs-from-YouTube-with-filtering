@@ -34,7 +34,6 @@ jobs:
         run: |
           mkdir -p yt_output
           
-          # טיפול בעוגיות
           if [ -n "$YT_COOKIES" ]; then
             echo "$YT_COOKIES" > cookies.txt
             COOKIE_ARG="--cookies cookies.txt"
@@ -43,20 +42,16 @@ jobs:
           fi
 
           FORMAT="${{ github.event.inputs.format }}"
-          
-          # פיצול הקישורים לקובץ
           echo "${{ github.event.inputs.yt_urls }}" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep . > urls.txt
 
           while IFS= read -r CLEAN_URL || [ -n "$CLEAN_URL" ]; do
             echo "Processing: $CLEAN_URL"
             
-            # ארגומנטים למניעת חסימות (התיקון לשגיאה שלך נמצא כאן)
-            # משתמש בלקוח אנדרואיד ודפדפן כדי לעקוף את ה-Signature Challenge
-            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --playlist-items 1 --no-restrict-filenames --windows-filenames --trim-filenames 100 --extractor-args \"youtube:player_client=android,web\""
+            # תיקון המרכאות ב-extractor-args
+            COMMON_ARGS="$COOKIE_ARG --ignore-errors --no-playlist --playlist-items 1 --no-restrict-filenames --windows-filenames --trim-filenames 100 --extractor-args youtube:player_client=android,web"
             
             OUTPUT_TEMPLATE="yt_output/%(title).100s.%(ext)s"
 
-            # בדיקה אם זה קישור או חיפוש
             if [[ ! "$CLEAN_URL" =~ ^http ]]; then
                SEARCH_PREFIX="ytsearch1:"
             else
@@ -81,60 +76,46 @@ jobs:
           import re
           import zipfile
 
-          # טעינת רשימת סינון
           filter_content = os.environ.get('FILTER_CONTENT', '')
           bad_words = [line.strip().lower() for line in filter_content.split('\n') if line.strip()]
           
           source_dir = "yt_output"
           if not os.path.exists(source_dir) or not os.listdir(source_dir):
-              print("❌ No files were downloaded. Check your URLs and Cookies.")
+              print("❌ No files downloaded.")
               exit(1)
 
           all_files = os.listdir(source_dir)
           valid_files = []
 
-          print(f"--- Starting Filter Process ({len(all_files)} files found) ---")
-
           for filename in all_files:
               filename_lower = filename.lower()
+              if any(word in filename_lower for word in bad_words):
+                  print(f"❌ Filtering: {filename}")
+                  os.remove(os.path.join(source_dir, filename))
+                  continue
               
-              # בדיקת סינון
-              is_bad = False
-              for bad_word in bad_words:
-                  if bad_word in filename_lower:
-                      print(f"❌ SKIPPING (Filtered): {filename}")
-                      os.remove(os.path.join(source_dir, filename))
-                      is_bad = True
-                      break
+              # ניקוי שם הקובץ לתווים בטוחים בלבד
+              clean_name = re.sub(r'[^a-zA-Z0-9\u0590-\u05FF._\s-]', '_', filename)
+              clean_name = re.sub(r'\s+', ' ', clean_name).strip()[:120]
               
-              if not is_bad:
-                  # ניקוי שם הקובץ מתווים בעייתיים
-                  clean_name = re.sub(r'[\\/*?:"<>|#%&{}]', '_', filename)
-                  clean_name = clean_name[:120] # הגבלת אורך
-                  
-                  old_path = os.path.join(source_dir, filename)
-                  new_path = os.path.join(source_dir, clean_name)
-                  
-                  os.rename(old_path, new_path)
-                  valid_files.append(clean_name)
+              old_path = os.path.join(source_dir, filename)
+              new_path = os.path.join(source_dir, clean_name)
+              os.rename(old_path, new_path)
+              valid_files.append(clean_name)
 
           if not valid_files:
-              print("❌ No valid files left after filtering.")
+              print("❌ No files left.")
               exit(1)
 
-          # יצירת התוצר הסופי
           if len(valid_files) > 1:
               final_artifact = "collection.zip"
               with zipfile.ZipFile(final_artifact, 'w', zipfile.ZIP_DEFLATED) as zipf:
                   for f in valid_files:
                       zipf.write(os.path.join(source_dir, f), f)
-              print(f"✅ Created ZIP with {len(valid_files)} files.")
           else:
               final_artifact = valid_files[0]
               shutil.move(os.path.join(source_dir, valid_files[0]), final_artifact)
-              print(f"✅ Single file ready: {final_artifact}")
 
-          # ייצוא שם הקובץ לשלבים הבאים
           with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as f:
               f.write(f"FINAL_ARTIFACT={final_artifact}\n")
 
@@ -144,6 +125,6 @@ jobs:
           artifacts: "${{ env.FINAL_ARTIFACT }}"
           tag: "v${{ github.run_number }}-${{ github.run_id }}"
           name: "הורדה מספר ${{ github.run_number }}"
-          body: "ההורדה הושלמה בהצלחה! מצורף הקובץ המבוקש."
+          body: "ההורדה הושלמה!"
           token: ${{ secrets.GITHUB_TOKEN }}
           allowUpdates: true
